@@ -1,6 +1,6 @@
 <div
   class="circus-fundraising-widget"
-  data-current="17422.48" 
+  data-current="18132.48" 
 >
 </div>
 
@@ -43,6 +43,31 @@
     color: rgba(40,36,35,0.85);
   }
 
+  .circus-donation-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    background: rgba(77,86,110,0.18);
+    color: var(--circus-charcoal);
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+
+  .circus-donation-pill-tag {
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    background: var(--circus-navy);
+    color: var(--circus-cream);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
   .circus-match-pill {
     display: inline-flex;
     align-items: center;
@@ -60,7 +85,7 @@
     padding: 0.05rem 0.4rem;
     border-radius: 999px;
     background: var(--circus-green);
-    color: var(--circus-charcoal);
+    color: var(--circus-cream);
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -82,7 +107,7 @@
 
   .circus-arc path {
     fill: none;
-    stroke-linecap: round;
+    stroke-linecap: butt;
   }
 
   .circus-arc-bg {
@@ -90,14 +115,22 @@
     stroke-width: 12;
   }
 
-  /* Single arc: total impact (incl. match) */
+  /* Impact arc: total (donations + match) */
   .circus-arc-impact {
-    stroke: var(--circus-red);
+    stroke: var(--circus-green);
     stroke-width: 12;
-    stroke-linecap: round;
     stroke-dasharray: 0;
     stroke-dashoffset: 0;
-    transition: stroke-dashoffset 0.8s ease-out;
+    transition: stroke-dashoffset 0.3s ease-out;
+  }
+
+  /* Donations arc: overlays the impact arc */
+  .circus-arc-donations {
+    stroke: var(--circus-navy);
+    stroke-width: 12;
+    stroke-dasharray: 0;
+    stroke-dashoffset: 0;
+    transition: stroke-dashoffset 0.3s ease-out;
   }
 
   .circus-arc-markers {
@@ -234,8 +267,6 @@
       font-size: 1rem;
     }
   }
-
-
 </style>
 
 <script>
@@ -280,7 +311,6 @@
     }
   ];
 
-
   function formatNZD(amount) {
     return '$' + Math.round(amount).toLocaleString('en-NZ');
   }
@@ -312,10 +342,6 @@
   container.innerHTML = `
     <div class="circus-fundraising-header">
       <div class="circus-fundraising-title">Help secure the future of circus in Wellington</div>
-      <div class="circus-match-pill">
-        <span class="circus-match-pill-tag">Matched</span>
-        <span>The first ${formatNZD(matchCap)} in donations is matched to create ${formatNZD(matchMaxImpact)} of impact.</span>
-      </div>
     </div>
 
     <div class="circus-arc-wrapper">
@@ -323,14 +349,21 @@
         <!-- semi-circle from left to right along the bottom -->
         <path class="circus-arc-bg" d="M20 100 A80 80 0 0 1 180 100" />
         <path class="circus-arc-impact" d="M20 100 A80 80 0 0 1 180 100" />
+        <path class="circus-arc-donations" d="M20 100 A80 80 0 0 1 180 100" />
         <g class="circus-arc-markers"></g>
       </svg>
       <div class="circus-arc-centre">
         <div class="circus-amount-main">${formatNZD(effectiveAmount)} total impact so far</div>
-        <div class="circus-amount-impact">
-          ${impactBreakdownText(rawAmount, matchedPortion)}
-        </div>
       </div>
+    </div>
+
+    <div class="circus-donation-pill">
+      <span class="circus-donation-pill-tag">Support</span>
+      <span>${formatNZD(rawAmount)} has been raised through donations and community fundraising so far.</span>
+    </div>
+    <div class="circus-match-pill">
+      <span class="circus-match-pill-tag">Matched</span>
+      <span>Every dollar of the first ${formatNZD(matchCap)} raised will be doubled by anonymous supporters, creating ${formatNZD(matchMaxImpact)} of impact.</span>
     </div>
 
     <ul class="circus-milestones">
@@ -352,6 +385,7 @@
 
   // ----- ARC ANIMATION + LABELLED MARKERS -----
   const impactPath = container.querySelector('.circus-arc-impact');
+  const donationsPath = container.querySelector('.circus-arc-donations');
   const markersGroup = container.querySelector('.circus-arc-markers');
 
   const NS = 'http://www.w3.org/2000/svg';
@@ -361,8 +395,9 @@
 
   function setArcProgress(path, percent) {
     const length = path.getTotalLength();
+    const clamped = Math.min(Math.max(percent, 0), 1);
     path.style.strokeDasharray = String(length);
-    path.style.strokeDashoffset = String(length * (1 - Math.min(Math.max(percent, 0), 1)));
+    path.style.strokeDashoffset = String(length * (1 - clamped));
   }
 
   // Position dots + labels along the arc for each milestone
@@ -380,8 +415,8 @@
     const nx = vx / mag;
     const ny = vy / mag;
 
-    const lineEndX = x + nx * 8;
-    const lineEndY = y + ny * 8;
+    const lineEndX = x + nx * 12;
+    const lineEndY = y + ny * 12;
     const labelX = lineEndX + nx * 4;
     const labelY = lineEndY + ny * 4;
 
@@ -414,11 +449,15 @@
     markersGroup.appendChild(group);
   });
 
-  // apply progress for TOTAL (incl. match)
+  // apply progress:
+  // - impact arc = total impact (incl. match)
+  // - donations arc = actual donations, overlaid on top
   const impactPercent = effectiveAmount / topGoal;
+  const donationPercent = rawAmount / topGoal;
 
   setTimeout(() => {
     setArcProgress(impactPath, impactPercent);
+    setArcProgress(donationsPath, donationPercent);
   }, 50);
 })();
 </script>
